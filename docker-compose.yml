@@ -1,0 +1,485 @@
+version: "3.8"
+
+# ============================================================
+# CS7NS6 Group H - Distributed Traffic Service
+# Local multi-region simulation using Docker networks
+#
+# Images are pulled from GitHub Container Registry (ghcr.io).
+# Each service repo has a GitHub Action that builds and
+# publishes its image automatically on every push to main.
+#
+# Usage:
+#   Start all:              docker compose up -d
+#   Stop all:               docker compose down
+#   Simulate node failure:  docker compose stop cassandra-eu
+#   View logs:              docker compose logs -f traffic-compatibility-eu
+#   Pull latest images:     docker compose pull
+# ============================================================
+
+networks:
+  region-eu:
+    driver: bridge
+  region-us:
+    driver: bridge
+  region-apac:
+    driver: bridge
+  global:
+    driver: bridge
+
+# ============================================================
+# ZOOKEEPER (shared, required by Kafka)
+# ============================================================
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    networks: [global]
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # KAFKA (one broker per region)
+  # ============================================================
+  kafka-eu:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-eu
+    networks: [global, region-eu]
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-eu:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  kafka-us:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-us
+    networks: [global, region-us]
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-us:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9093", "--list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  kafka-apac:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-apac
+    networks: [global, region-apac]
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-apac:9094
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9094
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9094", "--list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ============================================================
+  # CASSANDRA (one node per region, same cluster)
+  # ============================================================
+  cassandra-eu:
+    image: cassandra:4.1
+    container_name: cassandra-eu
+    networks: [global, region-eu]
+    environment:
+      CASSANDRA_CLUSTER_NAME: grouph-cluster
+      CASSANDRA_DC: eu
+      CASSANDRA_RACK: rack1
+      CASSANDRA_SEEDS: cassandra-eu
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    volumes:
+      - cassandra-eu-data:/var/lib/cassandra
+
+  cassandra-us:
+    image: cassandra:4.1
+    container_name: cassandra-us
+    networks: [global, region-us]
+    depends_on:
+      cassandra-eu:
+        condition: service_healthy
+    environment:
+      CASSANDRA_CLUSTER_NAME: grouph-cluster
+      CASSANDRA_DC: us
+      CASSANDRA_RACK: rack1
+      CASSANDRA_SEEDS: cassandra-eu
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    volumes:
+      - cassandra-us-data:/var/lib/cassandra
+
+  cassandra-apac:
+    image: cassandra:4.1
+    container_name: cassandra-apac
+    networks: [global, region-apac]
+    depends_on:
+      cassandra-us:
+        condition: service_healthy
+    environment:
+      CASSANDRA_CLUSTER_NAME: grouph-cluster
+      CASSANDRA_DC: apac
+      CASSANDRA_RACK: rack1
+      CASSANDRA_SEEDS: cassandra-eu
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    volumes:
+      - cassandra-apac-data:/var/lib/cassandra
+
+  # ============================================================
+  # REDIS (one per region, for Enforcement Service)
+  # ============================================================
+  redis-eu:
+    image: redis:7.2-alpine
+    container_name: redis-eu
+    networks: [region-eu]
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis-eu-data:/data
+
+  redis-us:
+    image: redis:7.2-alpine
+    container_name: redis-us
+    networks: [region-us]
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis-us-data:/data
+
+  redis-apac:
+    image: redis:7.2-alpine
+    container_name: redis-apac
+    networks: [region-apac]
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis-apac-data:/data
+
+  # ============================================================
+  # POSTGRESQL (shared, for IAM Service)
+  # ============================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    networks: [global]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  # ============================================================
+  # MICROSERVICES - EU REGION
+  # ============================================================
+  journey-booking-eu:
+    image: ghcr.io/cs7ns6-group-h/journey-booking:latest
+    container_name: journey-booking-eu
+    networks: [region-eu, global]
+    environment:
+      REGION: eu
+      KAFKA_BOOTSTRAP_SERVERS: kafka-eu:9092
+      CASSANDRA_HOSTS: cassandra-eu
+      CASSANDRA_DC: eu
+    ports:
+      - "8001:8000"
+    depends_on:
+      kafka-eu:
+        condition: service_healthy
+      cassandra-eu:
+        condition: service_healthy
+
+  traffic-compatibility-eu:
+    image: ghcr.io/cs7ns6-group-h/traffic-compatibility:latest
+    container_name: traffic-compatibility-eu
+    networks: [region-eu, global]
+    environment:
+      REGION: eu
+      KAFKA_BOOTSTRAP_SERVERS: kafka-eu:9092
+      CASSANDRA_HOSTS: cassandra-eu
+      CASSANDRA_DC: eu
+    ports:
+      - "8002:8000"
+    depends_on:
+      kafka-eu:
+        condition: service_healthy
+      cassandra-eu:
+        condition: service_healthy
+
+  notification-eu:
+    image: ghcr.io/cs7ns6-group-h/notification:latest
+    container_name: notification-eu
+    networks: [region-eu, global]
+    environment:
+      REGION: eu
+      KAFKA_BOOTSTRAP_SERVERS: kafka-eu:9092
+    ports:
+      - "8003:8000"
+    depends_on:
+      kafka-eu:
+        condition: service_healthy
+
+  enforcement-eu:
+    image: ghcr.io/cs7ns6-group-h/enforcement:latest
+    container_name: enforcement-eu
+    networks: [region-eu, global]
+    environment:
+      REGION: eu
+      REDIS_HOST: redis-eu
+      CASSANDRA_HOSTS: cassandra-eu
+      CASSANDRA_DC: eu
+      KAFKA_BOOTSTRAP_SERVERS: kafka-eu:9092
+    ports:
+      - "8004:8000"
+    depends_on:
+      redis-eu:
+        condition: service_healthy
+      cassandra-eu:
+        condition: service_healthy
+
+  iam-eu:
+    image: ghcr.io/cs7ns6-group-h/iam-service:latest
+    container_name: iam-eu
+    networks: [region-eu, global]
+    environment:
+      REGION: eu
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    ports:
+      - "8005:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ============================================================
+  # MICROSERVICES - US REGION
+  # ============================================================
+  journey-booking-us:
+    image: ghcr.io/cs7ns6-group-h/journey-booking:latest
+    container_name: journey-booking-us
+    networks: [region-us, global]
+    environment:
+      REGION: us
+      KAFKA_BOOTSTRAP_SERVERS: kafka-us:9093
+      CASSANDRA_HOSTS: cassandra-us
+      CASSANDRA_DC: us
+    ports:
+      - "8011:8000"
+    depends_on:
+      kafka-us:
+        condition: service_healthy
+      cassandra-us:
+        condition: service_healthy
+
+  traffic-compatibility-us:
+    image: ghcr.io/cs7ns6-group-h/traffic-compatibility:latest
+    container_name: traffic-compatibility-us
+    networks: [region-us, global]
+    environment:
+      REGION: us
+      KAFKA_BOOTSTRAP_SERVERS: kafka-us:9093
+      CASSANDRA_HOSTS: cassandra-us
+      CASSANDRA_DC: us
+    ports:
+      - "8012:8000"
+    depends_on:
+      kafka-us:
+        condition: service_healthy
+      cassandra-us:
+        condition: service_healthy
+
+  notification-us:
+    image: ghcr.io/cs7ns6-group-h/notification:latest
+    container_name: notification-us
+    networks: [region-us, global]
+    environment:
+      REGION: us
+      KAFKA_BOOTSTRAP_SERVERS: kafka-us:9093
+    ports:
+      - "8013:8000"
+    depends_on:
+      kafka-us:
+        condition: service_healthy
+
+  enforcement-us:
+    image: ghcr.io/cs7ns6-group-h/enforcement:latest
+    container_name: enforcement-us
+    networks: [region-us, global]
+    environment:
+      REGION: us
+      REDIS_HOST: redis-us
+      CASSANDRA_HOSTS: cassandra-us
+      CASSANDRA_DC: us
+      KAFKA_BOOTSTRAP_SERVERS: kafka-us:9093
+    ports:
+      - "8014:8000"
+    depends_on:
+      redis-us:
+        condition: service_healthy
+      cassandra-us:
+        condition: service_healthy
+
+  iam-us:
+    image: ghcr.io/cs7ns6-group-h/iam-service:latest
+    container_name: iam-us
+    networks: [region-us, global]
+    environment:
+      REGION: us
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    ports:
+      - "8015:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ============================================================
+  # MICROSERVICES - APAC REGION
+  # ============================================================
+  journey-booking-apac:
+    image: ghcr.io/cs7ns6-group-h/journey-booking:latest
+    container_name: journey-booking-apac
+    networks: [region-apac, global]
+    environment:
+      REGION: apac
+      KAFKA_BOOTSTRAP_SERVERS: kafka-apac:9094
+      CASSANDRA_HOSTS: cassandra-apac
+      CASSANDRA_DC: apac
+    ports:
+      - "8021:8000"
+    depends_on:
+      kafka-apac:
+        condition: service_healthy
+      cassandra-apac:
+        condition: service_healthy
+
+  traffic-compatibility-apac:
+    image: ghcr.io/cs7ns6-group-h/traffic-compatibility:latest
+    container_name: traffic-compatibility-apac
+    networks: [region-apac, global]
+    environment:
+      REGION: apac
+      KAFKA_BOOTSTRAP_SERVERS: kafka-apac:9094
+      CASSANDRA_HOSTS: cassandra-apac
+      CASSANDRA_DC: apac
+    ports:
+      - "8022:8000"
+    depends_on:
+      kafka-apac:
+        condition: service_healthy
+      cassandra-apac:
+        condition: service_healthy
+
+  notification-apac:
+    image: ghcr.io/cs7ns6-group-h/notification:latest
+    container_name: notification-apac
+    networks: [region-apac, global]
+    environment:
+      REGION: apac
+      KAFKA_BOOTSTRAP_SERVERS: kafka-apac:9094
+    ports:
+      - "8023:8000"
+    depends_on:
+      kafka-apac:
+        condition: service_healthy
+
+  enforcement-apac:
+    image: ghcr.io/cs7ns6-group-h/enforcement:latest
+    container_name: enforcement-apac
+    networks: [region-apac, global]
+    environment:
+      REGION: apac
+      REDIS_HOST: redis-apac
+      CASSANDRA_HOSTS: cassandra-apac
+      CASSANDRA_DC: apac
+      KAFKA_BOOTSTRAP_SERVERS: kafka-apac:9094
+    ports:
+      - "8024:8000"
+    depends_on:
+      redis-apac:
+        condition: service_healthy
+      cassandra-apac:
+        condition: service_healthy
+
+  iam-apac:
+    image: ghcr.io/cs7ns6-group-h/iam-service:latest
+    container_name: iam-apac
+    networks: [region-apac, global]
+    environment:
+      REGION: apac
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    ports:
+      - "8025:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+# ============================================================
+# VOLUMES
+# ============================================================
+volumes:
+  cassandra-eu-data:
+  cassandra-us-data:
+  cassandra-apac-data:
+  redis-eu-data:
+  redis-us-data:
+  redis-apac-data:
+  postgres-data:
