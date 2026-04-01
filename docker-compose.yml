@@ -115,6 +115,8 @@ services:
     image: cassandra:4.1
     container_name: cassandra-eu
     networks: [global, region-eu]
+    ports:
+      - "9042:9042"
     environment:
       CASSANDRA_CLUSTER_NAME: grouph-cluster
       CASSANDRA_DC: eu
