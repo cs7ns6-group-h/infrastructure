@@ -59,7 +59,7 @@ services:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-eu:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     healthcheck:
@@ -245,6 +245,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka-eu:9092
       CASSANDRA_HOSTS: cassandra-eu
       CASSANDRA_DC: eu
+      IAM_SERVICE_URL: http://iam-eu:8000
     ports:
       - "8001:8000"
     depends_on:
@@ -308,11 +309,14 @@ services:
     environment:
       REGION: eu
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      KAFKA_BOOTSTRAP_SERVERS: kafka-eu:9092
     ports:
       - "8005:8000"
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ../iam-service-main/keys:/app/keys
 
   # ============================================================
   # MICROSERVICES - US REGION
