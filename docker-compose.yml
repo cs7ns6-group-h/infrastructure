@@ -51,7 +51,7 @@ services:
     container_name: kafka-eu
     networks: [global, region-eu]
     ports:
-      - "9092:9092" 
+      - "9092:9092"
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -109,7 +109,7 @@ services:
       retries: 5
 
   # ============================================================
-  # CASSANDRA (one node per region, same cluster)
+  # CASSANDRA (one node per region, SimpleSnitch for local demo)
   # ============================================================
   cassandra-eu:
     image: cassandra:4.1
@@ -142,7 +142,7 @@ services:
       CASSANDRA_DC: us
       CASSANDRA_RACK: rack1
       CASSANDRA_SEEDS: cassandra-eu
-      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+      CASSANDRA_ENDPOINT_SNITCH: SimpleSnitch
     healthcheck:
       test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
       interval: 30s
@@ -163,7 +163,7 @@ services:
       CASSANDRA_DC: apac
       CASSANDRA_RACK: rack1
       CASSANDRA_SEEDS: cassandra-eu
-      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+      CASSANDRA_ENDPOINT_SNITCH: SimpleSnitch
     healthcheck:
       test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
       interval: 30s
@@ -278,6 +278,7 @@ services:
     environment:
       REGION: eu
       KAFKA_BOOTSTRAP_SERVERS: kafka-eu:9092
+      IAM_SERVICE_URL: http://iam-eu:8000
     ports:
       - "8003:8000"
     depends_on:
@@ -315,8 +316,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      kafka-eu:
+        condition: service_healthy
     volumes:
-      - ../iam-service-main/keys:/app/keys
+      - ../iam-service/keys:/app/keys
 
   # ============================================================
   # MICROSERVICES - US REGION
@@ -330,6 +333,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka-us:9093
       CASSANDRA_HOSTS: cassandra-us
       CASSANDRA_DC: us
+      IAM_SERVICE_URL: http://iam-us:8000
     ports:
       - "8011:8000"
     depends_on:
@@ -362,6 +366,7 @@ services:
     environment:
       REGION: us
       KAFKA_BOOTSTRAP_SERVERS: kafka-us:9093
+      IAM_SERVICE_URL: http://iam-us:8000
     ports:
       - "8013:8000"
     depends_on:
@@ -393,11 +398,16 @@ services:
     environment:
       REGION: us
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      KAFKA_BOOTSTRAP_SERVERS: kafka-us:9093
     ports:
       - "8015:8000"
     depends_on:
       postgres:
         condition: service_healthy
+      kafka-us:
+        condition: service_healthy
+    volumes:
+      - ../iam-service/keys:/app/keys
 
   # ============================================================
   # MICROSERVICES - APAC REGION
@@ -411,6 +421,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka-apac:9094
       CASSANDRA_HOSTS: cassandra-apac
       CASSANDRA_DC: apac
+      IAM_SERVICE_URL: http://iam-apac:8000
     ports:
       - "8021:8000"
     depends_on:
@@ -443,6 +454,7 @@ services:
     environment:
       REGION: apac
       KAFKA_BOOTSTRAP_SERVERS: kafka-apac:9094
+      IAM_SERVICE_URL: http://iam-apac:8000
     ports:
       - "8023:8000"
     depends_on:
@@ -474,11 +486,16 @@ services:
     environment:
       REGION: apac
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      KAFKA_BOOTSTRAP_SERVERS: kafka-apac:9094
     ports:
       - "8025:8000"
     depends_on:
       postgres:
         condition: service_healthy
+      kafka-apac:
+        condition: service_healthy
+    volumes:
+      - ../iam-service/keys:/app/keys
 
 # ============================================================
 # VOLUMES
