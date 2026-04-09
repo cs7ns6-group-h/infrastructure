@@ -1,0 +1,187 @@
+version: "3.8"
+
+# ============================================================
+# CS7NS6 Group H - EU Region (AWS eu-west-1 Ireland)
+# Usage:
+#   docker compose -f docker-compose.eu.yml up -d
+#   docker compose -f docker-compose.eu.yml down
+# ============================================================
+
+networks:
+  region:
+    driver: bridge
+
+services:
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    networks: [region]
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    networks: [region]
+    ports:
+      - "9092:9092"
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  cassandra:
+    image: cassandra:4.1
+    container_name: cassandra
+    networks: [region]
+    ports:
+      - "9042:9042"
+    environment:
+      CASSANDRA_CLUSTER_NAME: grouph-eu
+      CASSANDRA_DC: eu
+      CASSANDRA_RACK: rack1
+      CASSANDRA_ENDPOINT_SNITCH: SimpleSnitch
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    volumes:
+      - cassandra-data:/var/lib/cassandra
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    networks: [region]
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis-data:/data
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    networks: [region]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  iam:
+    image: ghcr.io/cs7ns6-group-h/iam-service:latest
+    container_name: iam
+    networks: [region]
+    environment:
+      REGION: eu
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "8005:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ../iam-service/keys:/app/keys
+
+  journey-booking:
+    image: ghcr.io/cs7ns6-group-h/journey-booking:latest
+    container_name: journey-booking
+    networks: [region]
+    environment:
+      REGION: eu
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      CASSANDRA_HOSTS: cassandra
+      CASSANDRA_DC: eu
+      IAM_SERVICE_URL: http://iam:8000
+    ports:
+      - "8001:8000"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      cassandra:
+        condition: service_healthy
+
+  traffic-compatibility:
+    image: ghcr.io/cs7ns6-group-h/traffic-compatibility:latest
+    container_name: traffic-compatibility
+    networks: [region]
+    environment:
+      REGION: eu
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      CASSANDRA_HOSTS: cassandra
+      CASSANDRA_DC: eu
+    ports:
+      - "8002:8000"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      cassandra:
+        condition: service_healthy
+
+  notification:
+    image: ghcr.io/cs7ns6-group-h/notification:latest
+    container_name: notification
+    networks: [region]
+    environment:
+      REGION: eu
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      IAM_SERVICE_URL: http://iam:8000
+    ports:
+      - "8003:8000"
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  enforcement:
+    image: ghcr.io/cs7ns6-group-h/enforcement:latest
+    container_name: enforcement
+    networks: [region]
+    environment:
+      REGION: eu
+      REDIS_HOST: redis
+      CASSANDRA_HOSTS: cassandra
+      CASSANDRA_DC: eu
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "8004:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      cassandra:
+        condition: service_healthy
+
+volumes:
+  cassandra-data:
+  redis-data:
+  postgres-data:
