@@ -1,0 +1,19 @@
+# Optional merge file for lighter local dev (EU stack only).
+# Usage:
+#   ./start-eu-only.sh --lite
+#   docker compose -f docker-compose.yml -f docker-compose.eu-lite.yml up -d zookeeper kafka-eu ...
+#
+# Tweak values if you still hit OOM; raise slightly if Cassandra fails to start.
+
+services:
+  cassandra-eu:
+    environment:
+      MAX_HEAP_SIZE: 512M
+      HEAP_NEWSIZE: 128M
+
+  kafka-eu:
+    environment:
+      KAFKA_HEAP_OPTS: "-Xmx256M -Xms256M"
+
+  redis-eu:
+    command: redis-server --appendonly yes --maxmemory 64mb --maxmemory-policy allkeys-lru
