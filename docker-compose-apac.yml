@@ -104,6 +104,8 @@ services:
       REGION: apac
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      JWT_PRIVATE_KEY_PATH: /app/keys/private.pem
+      JWT_PUBLIC_KEY_PATH: /app/keys/public.pem
     ports:
       - "8005:8000"
     depends_on:
