@@ -143,6 +143,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       CASSANDRA_HOSTS: cassandra
       CASSANDRA_DC: us
+      GRAPH_CACHE_PATH: /graph-cache/road_graph.pkl
     ports:
       - "8002:8000"
     depends_on:
@@ -150,6 +151,8 @@ services:
         condition: service_healthy
       cassandra:
         condition: service_healthy
+    volumes:
+      - traffic-graph:/graph-cache
 
   notification:
     image: ghcr.io/cs7ns6-group-h/notification:latest
@@ -187,3 +190,4 @@ volumes:
   cassandra-data:
   redis-data:
   postgres-data:
+  traffic-graph:

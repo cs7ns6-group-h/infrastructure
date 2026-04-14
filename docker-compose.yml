@@ -263,6 +263,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka-eu:9092
       CASSANDRA_HOSTS: cassandra-eu
       CASSANDRA_DC: eu
+      GRAPH_CACHE_PATH: /graph-cache/road_graph.pkl
     ports:
       - "8002:8000"
     depends_on:
@@ -270,6 +271,8 @@ services:
         condition: service_healthy
       cassandra-eu:
         condition: service_healthy
+    volumes:
+      - traffic-graph-eu:/graph-cache
 
   notification-eu:
     image: ghcr.io/cs7ns6-group-h/notification:latest
@@ -351,6 +354,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka-us:9093
       CASSANDRA_HOSTS: cassandra-us
       CASSANDRA_DC: us
+      GRAPH_CACHE_PATH: /graph-cache/road_graph.pkl
     ports:
       - "8012:8000"
     depends_on:
@@ -358,6 +362,8 @@ services:
         condition: service_healthy
       cassandra-us:
         condition: service_healthy
+    volumes:
+      - traffic-graph-us:/graph-cache
 
   notification-us:
     image: ghcr.io/cs7ns6-group-h/notification:latest
@@ -439,6 +445,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka-apac:9094
       CASSANDRA_HOSTS: cassandra-apac
       CASSANDRA_DC: apac
+      GRAPH_CACHE_PATH: /graph-cache/road_graph.pkl
     ports:
       - "8022:8000"
     depends_on:
@@ -446,6 +453,8 @@ services:
         condition: service_healthy
       cassandra-apac:
         condition: service_healthy
+    volumes:
+      - traffic-graph-apac:/graph-cache
 
   notification-apac:
     image: ghcr.io/cs7ns6-group-h/notification:latest
@@ -508,3 +517,6 @@ volumes:
   redis-us-data:
   redis-apac-data:
   postgres-data:
+  traffic-graph-eu:
+  traffic-graph-us:
+  traffic-graph-apac:
