@@ -10,7 +10,11 @@ version: "3.8"
 #
 # Usage:
 #   Start all:              docker compose up -d
+#   EU only (lighter):    ./start-eu-only.sh   or   ./start-eu-only.sh --lite
 #   Stop all:               docker compose down
+#
+# Apple Silicon: each service sets platform: linux/amd64 so Compose does not warn
+# when images are x86_64-only (GHCR app images). Infra images then also run amd64.
 #   Simulate node failure:  docker compose stop cassandra-eu
 #   View logs:              docker compose logs -f traffic-compatibility-eu
 #   Pull latest images:     docker compose pull
@@ -33,6 +37,7 @@ services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: zookeeper
+    platform: linux/amd64
     networks: [global]
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
@@ -49,6 +54,7 @@ services:
   kafka-eu:
     image: confluentinc/cp-kafka:7.5.0
     container_name: kafka-eu
+    platform: linux/amd64
     networks: [global, region-eu]
     ports:
       - "9092:9092"
@@ -71,6 +77,7 @@ services:
   kafka-us:
     image: confluentinc/cp-kafka:7.5.0
     container_name: kafka-us
+    platform: linux/amd64
     networks: [global, region-us]
     depends_on:
       zookeeper:
@@ -91,6 +98,7 @@ services:
   kafka-apac:
     image: confluentinc/cp-kafka:7.5.0
     container_name: kafka-apac
+    platform: linux/amd64
     networks: [global, region-apac]
     depends_on:
       zookeeper:
@@ -114,6 +122,7 @@ services:
   cassandra-eu:
     image: cassandra:4.1
     container_name: cassandra-eu
+    platform: linux/amd64
     networks: [global, region-eu]
     ports:
       - "9042:9042"
@@ -133,6 +142,7 @@ services:
   cassandra-us:
     image: cassandra:4.1
     container_name: cassandra-us
+    platform: linux/amd64
     networks: [global, region-us]
     depends_on:
       cassandra-eu:
@@ -154,6 +164,7 @@ services:
   cassandra-apac:
     image: cassandra:4.1
     container_name: cassandra-apac
+    platform: linux/amd64
     networks: [global, region-apac]
     depends_on:
       cassandra-us:
@@ -178,6 +189,7 @@ services:
   redis-eu:
     image: redis:7.2-alpine
     container_name: redis-eu
+    platform: linux/amd64
     networks: [region-eu]
     command: redis-server --appendonly yes
     healthcheck:
@@ -191,6 +203,7 @@ services:
   redis-us:
     image: redis:7.2-alpine
     container_name: redis-us
+    platform: linux/amd64
     networks: [region-us]
     command: redis-server --appendonly yes
     healthcheck:
@@ -204,6 +217,7 @@ services:
   redis-apac:
     image: redis:7.2-alpine
     container_name: redis-apac
+    platform: linux/amd64
     networks: [region-apac]
     command: redis-server --appendonly yes
     healthcheck:
@@ -220,6 +234,7 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: postgres
+    platform: linux/amd64
     networks: [global]
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -239,6 +254,7 @@ services:
   journey-booking-eu:
     image: ghcr.io/cs7ns6-group-h/journey-booking:latest
     container_name: journey-booking-eu
+    platform: linux/amd64
     networks: [region-eu, global]
     environment:
       REGION: eu
@@ -257,6 +273,7 @@ services:
   traffic-compatibility-eu:
     image: ghcr.io/cs7ns6-group-h/traffic-compatibility:latest
     container_name: traffic-compatibility-eu
+    platform: linux/amd64
     networks: [region-eu, global]
     environment:
       REGION: eu
@@ -277,6 +294,7 @@ services:
   notification-eu:
     image: ghcr.io/cs7ns6-group-h/notification:latest
     container_name: notification-eu
+    platform: linux/amd64
     networks: [region-eu, global]
     environment:
       REGION: eu
@@ -291,6 +309,7 @@ services:
   enforcement-eu:
     image: ghcr.io/cs7ns6-group-h/enforcement:latest
     container_name: enforcement-eu
+    platform: linux/amd64
     networks: [region-eu, global]
     environment:
       REGION: eu
@@ -309,11 +328,15 @@ services:
   iam-eu:
     image: ghcr.io/cs7ns6-group-h/iam-service:latest
     container_name: iam-eu
+    platform: linux/amd64
     networks: [region-eu, global]
     environment:
       REGION: eu
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       KAFKA_BOOTSTRAP_SERVERS: kafka-eu:9092
+      # Explicit paths (volume: ../iam-service/keys -> /app/keys). Fixes login if cwd != /app.
+      JWT_PRIVATE_KEY_PATH: /app/keys/private.pem
+      JWT_PUBLIC_KEY_PATH: /app/keys/public.pem
     ports:
       - "8005:8000"
     depends_on:
@@ -330,6 +353,7 @@ services:
   journey-booking-us:
     image: ghcr.io/cs7ns6-group-h/journey-booking:latest
     container_name: journey-booking-us
+    platform: linux/amd64
     networks: [region-us, global]
     environment:
       REGION: us
@@ -348,6 +372,7 @@ services:
   traffic-compatibility-us:
     image: ghcr.io/cs7ns6-group-h/traffic-compatibility:latest
     container_name: traffic-compatibility-us
+    platform: linux/amd64
     networks: [region-us, global]
     environment:
       REGION: us
@@ -368,6 +393,7 @@ services:
   notification-us:
     image: ghcr.io/cs7ns6-group-h/notification:latest
     container_name: notification-us
+    platform: linux/amd64
     networks: [region-us, global]
     environment:
       REGION: us
@@ -382,6 +408,7 @@ services:
   enforcement-us:
     image: ghcr.io/cs7ns6-group-h/enforcement:latest
     container_name: enforcement-us
+    platform: linux/amd64
     networks: [region-us, global]
     environment:
       REGION: us
@@ -400,11 +427,14 @@ services:
   iam-us:
     image: ghcr.io/cs7ns6-group-h/iam-service:latest
     container_name: iam-us
+    platform: linux/amd64
     networks: [region-us, global]
     environment:
       REGION: us
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       KAFKA_BOOTSTRAP_SERVERS: kafka-us:9093
+      JWT_PRIVATE_KEY_PATH: /app/keys/private.pem
+      JWT_PUBLIC_KEY_PATH: /app/keys/public.pem
     ports:
       - "8015:8000"
     depends_on:
@@ -421,6 +451,7 @@ services:
   journey-booking-apac:
     image: ghcr.io/cs7ns6-group-h/journey-booking:latest
     container_name: journey-booking-apac
+    platform: linux/amd64
     networks: [region-apac, global]
     environment:
       REGION: apac
@@ -439,6 +470,7 @@ services:
   traffic-compatibility-apac:
     image: ghcr.io/cs7ns6-group-h/traffic-compatibility:latest
     container_name: traffic-compatibility-apac
+    platform: linux/amd64
     networks: [region-apac, global]
     environment:
       REGION: apac
@@ -459,6 +491,7 @@ services:
   notification-apac:
     image: ghcr.io/cs7ns6-group-h/notification:latest
     container_name: notification-apac
+    platform: linux/amd64
     networks: [region-apac, global]
     environment:
       REGION: apac
@@ -473,6 +506,7 @@ services:
   enforcement-apac:
     image: ghcr.io/cs7ns6-group-h/enforcement:latest
     container_name: enforcement-apac
+    platform: linux/amd64
     networks: [region-apac, global]
     environment:
       REGION: apac
@@ -491,11 +525,14 @@ services:
   iam-apac:
     image: ghcr.io/cs7ns6-group-h/iam-service:latest
     container_name: iam-apac
+    platform: linux/amd64
     networks: [region-apac, global]
     environment:
       REGION: apac
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       KAFKA_BOOTSTRAP_SERVERS: kafka-apac:9094
+      JWT_PRIVATE_KEY_PATH: /app/keys/private.pem
+      JWT_PUBLIC_KEY_PATH: /app/keys/public.pem
     ports:
       - "8025:8000"
     depends_on:
