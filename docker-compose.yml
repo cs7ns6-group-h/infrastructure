@@ -321,6 +321,11 @@ services:
         condition: service_healthy
     volumes:
       - ../iam-service/keys:/app/keys
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   # ============================================================
   # MICROSERVICES - US REGION
@@ -406,12 +411,17 @@ services:
     ports:
       - "8015:8000"
     depends_on:
-      postgres:
+      iam-eu:
         condition: service_healthy
       kafka-us:
         condition: service_healthy
     volumes:
       - ../iam-service/keys:/app/keys
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   # ============================================================
   # MICROSERVICES - APAC REGION
@@ -497,7 +507,7 @@ services:
     ports:
       - "8025:8000"
     depends_on:
-      postgres:
+      iam-us:
         condition: service_healthy
       kafka-apac:
         condition: service_healthy
