@@ -122,6 +122,8 @@ services:
       CASSANDRA_DC: eu
       CASSANDRA_RACK: rack1
       CASSANDRA_ENDPOINT_SNITCH: SimpleSnitch
+      MAX_HEAP_SIZE: "512M"
+      HEAP_NEWSIZE: "128M"
     healthcheck:
       test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
       interval: 30s
@@ -133,16 +135,14 @@ services:
   cassandra-us:
     image: cassandra:4.1
     container_name: cassandra-us
-    networks: [global, region-us]
-    depends_on:
-      cassandra-eu:
-        condition: service_healthy
+    networks: [region-us]
     environment:
-      CASSANDRA_CLUSTER_NAME: grouph-cluster
+      CASSANDRA_CLUSTER_NAME: grouph-cluster-us
       CASSANDRA_DC: us
       CASSANDRA_RACK: rack1
-      CASSANDRA_SEEDS: cassandra-eu
       CASSANDRA_ENDPOINT_SNITCH: SimpleSnitch
+      MAX_HEAP_SIZE: "512M"
+      HEAP_NEWSIZE: "128M"
     healthcheck:
       test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
       interval: 30s
@@ -154,16 +154,14 @@ services:
   cassandra-apac:
     image: cassandra:4.1
     container_name: cassandra-apac
-    networks: [global, region-apac]
-    depends_on:
-      cassandra-us:
-        condition: service_healthy
+    networks: [region-apac]
     environment:
-      CASSANDRA_CLUSTER_NAME: grouph-cluster
+      CASSANDRA_CLUSTER_NAME: grouph-cluster-apac
       CASSANDRA_DC: apac
       CASSANDRA_RACK: rack1
-      CASSANDRA_SEEDS: cassandra-eu
       CASSANDRA_ENDPOINT_SNITCH: SimpleSnitch
+      MAX_HEAP_SIZE: "512M"
+      HEAP_NEWSIZE: "128M"
     healthcheck:
       test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
       interval: 30s
